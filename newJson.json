@@ -1,0 +1,25 @@
+{
+    "nested_object": {
+        "nested_string": "Nested string",
+        "nested_number": 3.14
+    },
+    "number_key": 42,
+    "string_key": "This is a string value",
+    "null_key": null,
+    "boolean_key_true": true,
+    "boolean_key_false": false,
+    "array_key": [
+        "element1",
+        123,
+        false,
+        null,
+        {
+            "inner_key": "inner value"
+        },
+        [
+            "sub-element1",
+            "sub-element2"
+        ]
+    ],
+    "newValue": 100.2
+}

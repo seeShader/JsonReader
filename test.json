@@ -1,0 +1,10 @@
+{
+    "test": "test",
+    "sad":"sdih",
+    "obj" : {
+        "test": "test"
+    },
+    "adigit" : 1021,
+    "bo" : true,
+    "bo2" : false
+}
