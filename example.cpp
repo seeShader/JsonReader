@@ -9,7 +9,7 @@ int main() {
 	LJR::JsonParser parser{};
 
 	//加载json文件
-	auto p = parser.parseFile("sample.json");
+	auto p = parser.parseFile("testFile/sample.json");
 	if (p == nullptr) {
 		std::cout << "加载文件失败" << '\n';
 		return -1;
@@ -31,7 +31,7 @@ int main() {
 	obj->addData("newValue", std::make_shared<LJR::Object_Double>(100.2));
 
 	//写入文件
-	LJR::writeToFile("newJson.json",obj);
+	LJR::writeToFile("testFile/newJson.json",obj);
 
 	return 0;
 }
