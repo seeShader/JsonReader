@@ -1,6 +1,8 @@
 {
     "string_key": "This is a string value",
     "number_key": 42,
+    "number_key_nagetive": -42,
+    "number_key_float": 3.14,
     "boolean_key_true": true,
     "boolean_key_false": false,
     "null_key": null,

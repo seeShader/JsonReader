@@ -18,11 +18,19 @@
 //用于简化定义
 #define __LJR_GET_VALUE_DEFINE(name) \
 	inline std::shared_ptr<Object_##name> getValue_##name(const std::string& key) { \
-		return JsonReader::castType<Object_##name>(getValue(key));};
+		auto v = getValue(key);\
+		if (v == nullptr) { \
+			throw std::runtime_error("不存在该值:"+key);\
+		}\
+		return JsonReader::castType<Object_##name>(v);};
 
 #define __LJR_GET_VALUE_DEFINE_ARRAY(name) \
 	inline std::shared_ptr<Object_##name> getValue_##name(size_t index) { \
-		return JsonReader::castType<Object_##name>(getValue(index));};
+		auto v = getValue(index);\
+		if (v == nullptr) { \
+			throw std::runtime_error("不存在该索引对应的值:"+std::to_string(index));\
+		}\
+		return JsonReader::castType<Object_##name>(v);};
 
 namespace JsonReader {
 	enum class DataType
@@ -58,6 +66,10 @@ namespace JsonReader {
 	public:
 		virtual DataType getType() = 0;
 		virtual void write(std::ofstream& file,int indentNum = 1) = 0;
+
+		//给定的变量是否是该类或其儿子，用于添加数据时防止嵌套
+		virtual bool hasSon(const DataObject* const address) const { return address == this; }
+
 		//virtual void setParent(DataObject* parent) { this->parent = parent; }
 		//virtual DataObject* getParent() { return parent; }
 	protected:
@@ -112,10 +124,13 @@ namespace JsonReader {
 
 	class Object_Array : public DataObject {
 	public:
-		void addData(std::shared_ptr<DataObject> value) { objects.push_back(value); }
+		bool addData(std::shared_ptr<DataObject> value,bool needCheck = true);
+		bool deleteValue(size_t index);
 		
 		DataType getType() override { return DataType::ARRARY; }
 		void write(std::ofstream& file, int indentNum)  override;
+
+		bool hasSon(const DataObject* const address) const override;
 
 		inline size_t getSize() const { return objects.size(); }
 
@@ -149,9 +164,11 @@ namespace JsonReader {
 	{
 	public:
 		DataType getType() override { return DataType::OBJECT; }
-		void write(std::ofstream& file, int indentNum)  override;
 
-		bool addData(const std::string& name, std::shared_ptr<DataObject> data);
+		void write(std::ofstream& file, int indentNum)  override;
+		bool hasSon(const DataObject* const address) const override;
+
+		bool addData(const std::string& name, std::shared_ptr<DataObject> data, bool needCheck = true);
 		
 		std::shared_ptr<DataObject> getValue(const std::string& name);
 
@@ -194,8 +211,13 @@ namespace JsonReader {
 	};
 
 	//Object_Object
-	bool JsonReader::Object_Object::addData(const std::string& name, std::shared_ptr<DataObject> data)
+	bool JsonReader::Object_Object::addData(const std::string& name, std::shared_ptr<DataObject> data, bool needCheck)
 	{
+		if (needCheck) {
+			if (data.get() == this || data->hasSon(this)) {
+				throw std::runtime_error("添加的数据嵌套");
+			}
+		}
 		objects[name] = data;
 		return true;
 	}
@@ -222,6 +244,44 @@ namespace JsonReader {
 		else {
 			return nullptr;
 		}
+	}
+
+	inline bool JsonReader::Object_Array::deleteValue(size_t index)
+	{
+		if (index < 0 || index >= objects.size()) return false;
+		objects.erase(objects.begin() + index);
+		return true;
+	}
+
+	inline bool Object_Array::addData(std::shared_ptr<DataObject> value,bool needCheck)
+	{
+		if (needCheck) {
+			if (value.get() == this || value->hasSon(this)) {
+				throw std::runtime_error("添加的数据嵌套");
+			}
+		}
+		objects.push_back(value);
+		return true;
+	}
+
+	inline bool Object_Array::hasSon(const DataObject* const address) const
+	{
+		for (auto& t : objects) {
+			if (t->hasSon(this)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	inline bool Object_Object::hasSon(const DataObject* const address) const
+	{
+		for (auto& t : objects) {
+			if (t.second->hasSon(this)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/*JsonReader::JsonParser::JsonParser(const std::string& filePath)
@@ -428,7 +488,7 @@ namespace JsonReader {
 				break;
 			}
 			default: {
-				if (std::isdigit(content[pos])) {
+				if (std::isdigit(content[pos]) || content[pos] == '-') {
 					if (isNowReadKey == true) {
 						throw JsonFormatError();
 						return obj;
@@ -437,7 +497,12 @@ namespace JsonReader {
 					obj->addData(key, value);
 					isNowReadKey = true;
 #ifdef __ENABLE_DEBUG_JSON_INFO_OUT
-					std::cout << "读取到value:" << value << '\n';
+					if (value->getType() == DataType::LONG) {
+						std::cout << "读取到value:" << castType<Object_Long>(value)->getValue() << '\n';
+					}
+					else if (value->getType() == DataType::DOUBLE) {
+						std::cout << "读取到value:" << castType<Object_Double>(value)->getValue() << '\n';
+					}
 #endif
 				}
 				break;
@@ -539,11 +604,16 @@ namespace JsonReader {
 				break;
 			}
 			default: {
-				if (std::isdigit(content[pos])) {
+				if (std::isdigit(content[pos]) || content[pos] == '-') {
 					auto value = readDigit(content, pos);
 					obj->addData(value);
 #ifdef __ENABLE_DEBUG_JSON_INFO_OUT
-					std::cout << "读取到value:" << value << '\n';
+					if (value->getType() == DataType::LONG) {
+						std::cout << "读取到value:" << castType<Object_Long>(value)->getValue() << '\n';
+					}
+					else if (value->getType() == DataType::DOUBLE) {
+						std::cout << "读取到value:" << castType<Object_Double>(value)->getValue() << '\n';
+					}
 #endif
 				}
 				break;
@@ -574,8 +644,12 @@ namespace JsonReader {
 	}
 	inline std::shared_ptr<DataObject> JsonParser::readDigit(const std::string& content, size_t& pos)
 	{
-		if (std::isdigit(content.at(pos)) == false) return nullptr;
-		std::uint64_t intPart = 0;
+		bool isNegative = (content.at(pos) == '-');
+		if ((std::isdigit(content.at(pos)) == false) && isNegative == false) return nullptr;
+		
+		if (isNegative) pos++;
+
+		std::int64_t intPart = 0;
 		for (; pos <content.size() && std::isdigit(content[pos]); pos++) {
 			intPart *= 10;
 			intPart += content[pos] - '0';
@@ -594,9 +668,17 @@ namespace JsonReader {
 			}
 			decPart /= std::pow(10, wei);
 			decPart += intPart;
+			
+			if (isNegative == true) {
+				decPart *= -1;
+			}
+
 			return std::make_shared<Object_Double>(decPart);
 		}
 		else {
+			if (isNegative == true) {
+				intPart *= -1;
+			}
 			return std::make_shared<Object_Long>(intPart);
 		}
 		return nullptr;
@@ -695,6 +777,7 @@ namespace JsonReader {
 		file << '}';
 	}
 
+
 	bool writeToFile(const std::string& fileName, std::shared_ptr<DataObject> obj) {
 		std::ofstream outFile(fileName);
 
@@ -710,6 +793,16 @@ namespace JsonReader {
 			throw std::runtime_error("打开文件失败: " + fileName);
 			return false;
 		}
+	}
+
+	std::shared_ptr<DataObject> parseFile(const std::string& filePath) {
+		static JsonParser parser{};
+		return parser.parseFile(filePath);
+	}
+
+	std::shared_ptr<DataObject> parseText(const std::string& content) {
+		static JsonParser parser{};
+		return parser.parseText(content);
 	}
 }
 
